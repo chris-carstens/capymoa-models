@@ -25,10 +25,38 @@ Identical accuracy achieved on the **Electricity (Elec2)** dataset (45,312 insta
 - **Metric:** Accuracy matching to within 0.01%.
 - **Verification Script:** `capymoa_vs_river/log_regression_parity.py`
 
+**Execution Summary:**
+```text
+--- Initializing Models ---
+Running CapyMOA Evaluation...
+Running River Python Evaluation...
+
+--- Execution Summary ---
+CapyMOA Accuracy: 69.93%
+River Accuracy:   69.93%
+
+Total Native CapyMOA Time:  0.7726 seconds
+Total Native River Time:    5.3074 seconds
+```
+
 ### 2. Softmax Regression Parity
 Identical accuracy achieved on the **Covtype** dataset (multi-class).
 - **Metric:** Accuracy matching verified through comparative evaluation.
 - **Verification Script:** `capymoa_vs_river/softmax_parity.py`
+
+**Execution Summary:**
+```text
+--- Initializing Models ---
+Running CapyMOA Evaluation...
+Running River Evaluation (manual bias added)...
+
+--- Execution Summary ---
+CapyMOA Accuracy: 82.30%
+River Accuracy:   82.29%
+
+Total Native CapyMOA Time:  1.7946 seconds
+Total Native River Time:    43.0861 seconds
+```
 
 ---
 

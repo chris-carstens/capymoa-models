@@ -3,7 +3,6 @@ import sys
 import os
 import jpype
 import time
-import numpy as np
 
 # Add the project root to sys.path
 project_root = os.path.abspath(os.getcwd())
@@ -23,7 +22,7 @@ from capymoa.evaluation import prequential_evaluation
 
 # Initialize stream
 stream_capy = Covtype()
-max_instances = 10000
+max_instances = 40000
 
 # Common Hyperparameters
 seed = 42

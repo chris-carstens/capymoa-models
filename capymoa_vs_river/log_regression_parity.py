@@ -1,29 +1,24 @@
 import sys
 import os
 import jpype
+import time
 
-# Add the project root to sys.path so custom_capymoa can be imported
-project_root = os.path.abspath(os.path.join(os.getcwd(), "..", ".."))
+# Add the project root to sys.path
+project_root = os.path.abspath(os.getcwd())
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-# Ensure custom Java classes are in the classpath BEFORE importing capymoa
+# Ensure custom Java classes are in the classpath
 java_classes_root = os.path.join(project_root, "custom_moa")
 if not jpype.isJVMStarted():
     jpype.addClassPath(java_classes_root)
-print(f"Added to classpath: {java_classes_root}")
+
 
 from capymoa.datasets import Electricity
 from custom_capymoa.classifier import LogisticRegression as CapyLR
 from river.linear_model import LogisticRegression as RiverLR
 from river import optim
-
-### Fast Native Evaluation Pipeline (CapyMOA)
 from capymoa.evaluation import prequential_evaluation
-import time
-from capymoa.datasets import Electricity
-from river import optim
-from river.linear_model import LogisticRegression as RiverLR
 
 # Common Hyperparameters
 seed = 42
@@ -35,6 +30,8 @@ intercept_lr = 0.01
 # 1. Re-initialize streams
 stream_native = Electricity()
 
+print("--- Initializing Models ---")
+
 # CapyMOA Initialization
 capy_model_native = CapyLR(
     schema=stream_native.get_schema(), 
@@ -45,7 +42,7 @@ capy_model_native = CapyLR(
     intercept_lr=intercept_lr,
 )
 
-print("Running Native CapyMOA Evaluation...")
+print("Running CapyMOA Evaluation...")
 start_native = time.perf_counter()
 results = prequential_evaluation(stream=stream_native, learner=capy_model_native, max_instances=45312)
 native_time = time.perf_counter() - start_native
@@ -86,7 +83,5 @@ river_accuracy = (river_correct / total_river) * 100
 print("\n--- Execution Summary ---")
 print(f"CapyMOA Accuracy: {capy_accuracy:.2f}%")
 print(f"River Accuracy:   {river_accuracy:.2f}%")
-if abs(capy_accuracy - river_accuracy) < 0.01:
-    print("\nSuccess! Both models produced identically matching overall accuracy.")
 print(f"\nTotal Native CapyMOA Time:  {native_time:.4f} seconds")
 print(f"Total Native River Time:    {river_time:.4f} seconds")
