@@ -1,0 +1,319 @@
+/*
+ *    SoftmaxRegression.java
+ *
+ *    Softmax Regression classifier for online multi-class classification.
+ *
+ *    This program is free software; you can redistribute it and/or modify
+ *    it under the terms of the GNU General Public License as published by
+ *    the Free Software Foundation; either version 3 of the License, or
+ *    (at your option) any later version.
+ *
+ *    This program is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    GNU General Public License for more details.
+ *
+ *    You should have received a copy of the GNU General Public License
+ *    along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+package moa.classifiers.functions;
+
+import moa.classifiers.AbstractClassifier;
+import moa.classifiers.MultiClassClassifier;
+import moa.core.DoubleVector;
+import moa.core.Measurement;
+import moa.core.StringUtils;
+
+import com.github.javacliparser.FloatOption;
+
+import com.yahoo.labs.samoa.instances.Instance;
+
+/**
+ * Softmax Regression (Multinomial Logistic Regression) classifier for online
+ * learning.
+ *
+ * <p>
+ * This classifier generalizes binary Logistic Regression to multiple classes.
+ * It uses Stochastic Gradient Descent (SGD) to optimize the multinomial log
+ * loss
+ * (cross-entropy) and applies the softmax activation function.
+ * </p>
+ *
+ * <h3>Algorithm Overview</h3>
+ * <ul>
+ * <li><b>Forward pass:</b> z_k = w_k · x + bias_k; p_k = exp(z_k) / Σ
+ * exp(z_j)</li>
+ * <li><b>Loss:</b> Cross-entropy = - Σ I(y=k) * log(p_k)</li>
+ * <li><b>Gradient:</b> ∇L_k = (p_k - I(y=k))·x (for weights), (p_k - I(y=k))
+ * (for bias)</li>
+ * <li><b>Update:</b> w_k ← w_k · (1 - lr·λ) - lr·∇L_k (with L2 weight
+ * decay)</li>
+ * </ul>
+ *
+ * @author SDA Project - Extension of LogisticRegression
+ */
+public class SoftmaxRegression extends AbstractClassifier implements MultiClassClassifier {
+
+    private static final long serialVersionUID = 1L;
+
+    @Override
+    public String getPurposeString() {
+        return "Softmax Regression for online multi-class classification using SGD with cross-entropy loss.";
+    }
+
+    // ---------------------------------------------------------------
+    // MOA Options
+    // ---------------------------------------------------------------
+
+    public FloatOption learningRateOption = new FloatOption(
+            "learningRate", 'r',
+            "Learning rate for SGD weight updates.",
+            0.01, 0.0, Double.MAX_VALUE);
+
+    public FloatOption interceptLearningRateOption = new FloatOption(
+            "interceptLearningRate", 'i',
+            "Learning rate for the bias / intercept term.",
+            0.01, 0.0, Double.MAX_VALUE);
+
+    public FloatOption l2RegularizationOption = new FloatOption(
+            "l2Regularization", 'l',
+            "L2 regularization parameter (weight decay). Pushes weights towards 0.",
+            0.0, 0.0, Double.MAX_VALUE);
+
+    public FloatOption clipGradientOption = new FloatOption(
+            "clipGradient", 'c',
+            "Clips the absolute value of the gradient to this maximum.",
+            1e12, 0.0, Double.MAX_VALUE);
+
+    // ---------------------------------------------------------------
+    // Model state
+    // ---------------------------------------------------------------
+
+    /** One weight vector per class. index k corresponds to class k. */
+    protected DoubleVector[] weightsSet;
+
+    /** One bias / intercept term per class. */
+    protected double[] biases;
+
+    /** Number of classes seen/supported. */
+    protected int numClasses;
+
+    /** Cached hyperparameters. */
+    protected double learningRate;
+    protected double interceptLearningRate;
+    protected double l2Regularization;
+    protected double clipGradient;
+
+    // ---------------------------------------------------------------
+    // Core methods
+    // ---------------------------------------------------------------
+
+    /**
+     * Resets the model to its initial state.
+     */
+    @Override
+    public void resetLearningImpl() {
+        this.weightsSet = null;
+        this.biases = null;
+        this.numClasses = 0;
+
+        // Read hyperparameters
+        this.learningRate = this.learningRateOption.getValue();
+        this.interceptLearningRate = this.interceptLearningRateOption.getValue();
+        this.l2Regularization = this.l2RegularizationOption.getValue();
+        this.clipGradient = this.clipGradientOption.getValue();
+    }
+
+    /**
+     * Ensures internal structures are initialized and handle the required number of
+     * classes.
+     */
+    protected void prepareForClasses(int requiredClasses) {
+        if (this.numClasses >= requiredClasses) {
+            return;
+        }
+
+        int newNumClasses = requiredClasses;
+        DoubleVector[] newWeightsSet = new DoubleVector[newNumClasses];
+        double[] newBiases = new double[newNumClasses];
+
+        // Copy existing state
+        if (this.weightsSet != null) {
+            System.arraycopy(this.weightsSet, 0, newWeightsSet, 0, this.numClasses);
+            System.arraycopy(this.biases, 0, newBiases, 0, this.numClasses);
+        }
+
+        // Initialize new components
+        for (int i = this.numClasses; i < newNumClasses; i++) {
+            newWeightsSet[i] = new DoubleVector();
+            newBiases[i] = 0.0;
+        }
+
+        this.weightsSet = newWeightsSet;
+        this.biases = newBiases;
+        this.numClasses = newNumClasses;
+    }
+
+    /**
+     * Computes raw score (logit) for a specific class.
+     */
+    protected double computeLogit(Instance inst, int classIndex) {
+        if (classIndex >= this.numClasses) {
+            return 0.0;
+        }
+
+        double result = 0.0;
+        DoubleVector classWeights = this.weightsSet[classIndex];
+
+        for (int i = 0; i < inst.numValues(); i++) {
+            int idx = inst.index(i);
+            if (idx != inst.classIndex() && !inst.isMissingSparse(i)) {
+                if (idx < classWeights.numValues()) {
+                    result += inst.valueSparse(i) * classWeights.getValue(idx);
+                }
+            }
+        }
+        return result + this.biases[classIndex];
+    }
+
+    @Override
+    public void trainOnInstanceImpl(Instance inst) {
+        if (inst.classIsMissing()) {
+            return;
+        }
+
+        int targetClass = (int) inst.classValue();
+        int instNumClasses = inst.numClasses();
+
+        // Ensure we handle at least the number of classes defined in the
+        // instance/target
+        prepareForClasses(Math.max(instNumClasses, targetClass + 1));
+
+        // 1. Forward pass: compute logits
+        double[] logits = new double[this.numClasses];
+        double maxLogit = Double.NEGATIVE_INFINITY;
+        for (int k = 0; k < this.numClasses; k++) {
+            logits[k] = computeLogit(inst, k);
+            if (logits[k] > maxLogit) {
+                maxLogit = logits[k];
+            }
+        }
+
+        // 2. Compute probabilities using Softmax (with max-subtraction stabilization)
+        double[] probs = new double[this.numClasses];
+        double sumExp = 0.0;
+        for (int k = 0; k < this.numClasses; k++) {
+            probs[k] = Math.exp(logits[k] - maxLogit);
+            sumExp += probs[k];
+        }
+        for (int k = 0; k < this.numClasses; k++) {
+            probs[k] /= sumExp;
+        }
+
+        // 3. Update weights for each class
+        for (int k = 0; k < this.numClasses; k++) {
+            double target = (k == targetClass) ? 1.0 : 0.0;
+            double lossGradient = (probs[k] - target) * inst.weight();
+
+            // Clip gradient
+            lossGradient = Math.max(-this.clipGradient, Math.min(this.clipGradient, lossGradient));
+
+            DoubleVector classWeights = this.weightsSet[k];
+
+            // Update feature weights
+            for (int i = 0; i < inst.numValues(); i++) {
+                int idx = inst.index(i);
+                if (idx != inst.classIndex() && !inst.isMissingSparse(i)) {
+                    double xi = inst.valueSparse(i);
+                    double currentWeight = classWeights.getValue(idx);
+
+                    // L2 Regularization
+                    if (this.l2Regularization > 0.0) {
+                        currentWeight *= (1.0 - this.learningRate * this.l2Regularization);
+                    }
+
+                    // SGD Update
+                    currentWeight -= this.learningRate * lossGradient * xi;
+                    classWeights.setValue(idx, currentWeight);
+                }
+            }
+
+            // Update bias
+            this.biases[k] -= this.interceptLearningRate * lossGradient;
+        }
+    }
+
+    @Override
+    public double[] getVotesForInstance(Instance inst) {
+        if (this.numClasses == 0) {
+            return new double[inst.numClasses()];
+        }
+
+        int requiredClasses = Math.max(inst.numClasses(), this.numClasses);
+        // We don't call prepareForClasses during inference to avoid side effects,
+        // but we handle potential missing class structures in computeLogit.
+
+        double[] logits = new double[requiredClasses];
+        double maxLogit = Double.NEGATIVE_INFINITY;
+
+        for (int k = 0; k < requiredClasses; k++) {
+            logits[k] = computeLogit(inst, k);
+            if (logits[k] > maxLogit) {
+                maxLogit = logits[k];
+            }
+        }
+
+        double[] probs = new double[requiredClasses];
+        double sumExp = 0.0;
+        for (int k = 0; k < requiredClasses; k++) {
+            probs[k] = Math.exp(logits[k] - maxLogit);
+            sumExp += probs[k];
+        }
+        for (int k = 0; k < requiredClasses; k++) {
+            probs[k] /= sumExp;
+        }
+
+        // If instance expects less classes than we have, return the expected number
+        if (inst.numClasses() < requiredClasses) {
+            double[] returnedProbs = new double[inst.numClasses()];
+            System.arraycopy(probs, 0, returnedProbs, 0, inst.numClasses());
+            return returnedProbs;
+        }
+
+        return probs;
+    }
+
+    @Override
+    public void getModelDescription(StringBuilder result, int indent) {
+        StringUtils.appendIndented(result, indent, toString());
+        StringUtils.appendNewline(result);
+    }
+
+    @Override
+    protected Measurement[] getModelMeasurementsImpl() {
+        return new Measurement[] {
+                new Measurement("num classes", this.numClasses),
+                new Measurement("num weights total", this.numClasses
+                        * (this.weightsSet != null && this.weightsSet.length > 0 ? this.weightsSet[0].numValues() : 0))
+        };
+    }
+
+    @Override
+    public boolean isRandomizable() {
+        return false;
+    }
+
+    @Override
+    public String toString() {
+        if (this.numClasses == 0) {
+            return "SoftmaxRegression: No model built yet.\n";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("SoftmaxRegression (Cross-Entropy / Softmax)\n");
+        sb.append("  Learning Rate: ").append(this.learningRate).append("\n");
+        sb.append("  L2 Regularization: ").append(this.l2Regularization).append("\n");
+        sb.append("  Number of Classes: ").append(this.numClasses).append("\n");
+        return sb.toString();
+    }
+}

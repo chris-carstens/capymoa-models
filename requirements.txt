@@ -1,0 +1,9 @@
+capymoa
+river
+numpy==1.26.4
+pandas
+scipy
+torch
+jupyter
+scikit-learn
+JPype1
