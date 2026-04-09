@@ -123,6 +123,12 @@ sda-project/
 └── tests/                         # Unit tests
 ```
 
+## 🔗 References
+
+- **CapyMOA Classifiers:** [Source Code on GitHub](https://github.com/adaptive-machine-learning/CapyMOA/tree/main/src/capymoa/classifier)
+- **MOA Classifiers:** [Source Code on GitHub](https://github.com/Waikato/moa/tree/master/moa/src/main/java/moa/classifiers)
+- **River Linear Models:** [Source Code on GitHub](https://github.com/online-ml/river/tree/main/river/linear_model)
+
 ---
 
 ## 🤖 AI Agent Technical Workflow
