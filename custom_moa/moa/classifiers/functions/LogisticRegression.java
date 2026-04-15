@@ -20,7 +20,6 @@
 package moa.classifiers.functions;
 
 import moa.classifiers.AbstractClassifier;
-import moa.classifiers.MultiClassClassifier;
 import moa.core.DoubleVector;
 import moa.core.Measurement;
 import moa.core.StringUtils;
@@ -55,10 +54,8 @@ import com.yahoo.labs.samoa.instances.Instance;
  * <li><b>clipGradient</b> (-c): Maximum absolute value for gradient clipping.
  * Default: 1e12</li>
  * </ul>
- *
- * @author SDA Project - Ported from River library
  */
-public class LogisticRegression extends AbstractClassifier implements MultiClassClassifier {
+public class LogisticRegression extends AbstractClassifier {
 
     private static final long serialVersionUID = 1L;
 
